@@ -20,6 +20,7 @@ export interface TelegramChannelOpts {
   onMessage: OnInboundMessage;
   onChatMetadata: OnChatMetadata;
   registeredGroups: () => Record<string, RegisteredGroup>;
+  onResetSession: (chatJid: string, groupFolder: string) => void;
 }
 
 /**
@@ -90,7 +91,10 @@ export class TelegramChannel implements Channel {
       const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
       const resp = await fetch(fileUrl);
       if (!resp.ok) {
-        logger.warn({ fileId, status: resp.status }, 'Telegram file download failed');
+        logger.warn(
+          { fileId, status: resp.status },
+          'Telegram file download failed',
+        );
         return null;
       }
 
@@ -112,6 +116,13 @@ export class TelegramChannel implements Channel {
       },
     });
 
+    // Register commands so they appear in Telegram's command list
+    await this.bot.api.setMyCommands([
+      { command: 'ping', description: 'Check if the bot is online' },
+      { command: 'compact', description: 'Compact conversation history to free up context' },
+      { command: 'clear', description: 'Clear conversation history and start fresh' },
+    ]);
+
     // Command to get chat ID (useful for registration)
     this.bot.command('chatid', (ctx) => {
       const chatId = ctx.chat.id;
@@ -132,9 +143,21 @@ export class TelegramChannel implements Channel {
       ctx.reply(`${ASSISTANT_NAME} is online.`);
     });
 
+    // Command to reset the current session (clears context window, keeps memory)
+    this.bot.command('clear', (ctx) => {
+      const chatJid = `tg:${ctx.chat.id}`;
+      const group = this.opts.registeredGroups()[chatJid];
+      if (!group) {
+        ctx.reply('This chat is not registered.');
+        return;
+      }
+      this.opts.onResetSession(chatJid, group.folder);
+      ctx.reply('Chat cleared. Starting fresh on your next message.');
+    });
+
     // Telegram bot commands handled above — skip them in the general handler
     // so they don't also get stored as messages. All other /commands flow through.
-    const TELEGRAM_BOT_COMMANDS = new Set(['chatid', 'ping']);
+    const TELEGRAM_BOT_COMMANDS = new Set(['chatid', 'ping', 'clear']);
 
     this.bot.on('message:text', async (ctx) => {
       if (ctx.message.text.startsWith('/')) {
