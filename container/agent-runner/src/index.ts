@@ -377,6 +377,7 @@ async function runQuery(
   mcpServerPath: string,
   containerInput: ContainerInput,
   sdkEnv: Record<string, string | undefined>,
+  calendarMcpPath: string | null,
   resumeAt?: string,
 ): Promise<{
   newSessionId?: string;
@@ -469,6 +470,7 @@ async function runQuery(
         'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
+        ...(calendarMcpPath !== null ? ['mcp__calendar__*'] : []),
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -484,6 +486,14 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
+        ...(calendarMcpPath !== null
+          ? {
+              calendar: {
+                command: 'node',
+                args: [calendarMcpPath],
+              },
+            }
+          : {}),
       },
       hooks: {
         PreCompact: [
@@ -630,6 +640,13 @@ async function main(): Promise<void> {
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');
+  const calendarMcpPath = path.join(__dirname, 'calendar-mcp.js');
+  const calendarUrlFile = '/workspace/group/.calendar-url';
+  const hasCalendar =
+    containerInput.isMain &&
+    fs.existsSync(calendarMcpPath) &&
+    fs.existsSync(calendarUrlFile) &&
+    fs.readFileSync(calendarUrlFile, 'utf-8').trim().length > 0;
 
   let sessionId = containerInput.sessionId;
   fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
@@ -688,6 +705,7 @@ async function main(): Promise<void> {
         mcpServerPath,
         containerInput,
         sdkEnv,
+        hasCalendar ? calendarMcpPath : null,
         resumeAt,
       );
       if (queryResult.newSessionId) {
