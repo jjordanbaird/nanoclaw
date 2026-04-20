@@ -127,6 +127,25 @@ function log(message: string): void {
   console.error(`[agent-runner] ${message}`);
 }
 
+interface TokenLogEntry {
+  timestamp: string;
+  sessionId: string;
+  groupFolder: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+function appendTokenLog(entry: TokenLogEntry): void {
+  const logPath = '/workspace/group/token-log.jsonl';
+  try {
+    fs.appendFileSync(logPath, JSON.stringify(entry) + '\n');
+  } catch (err) {
+    log(
+      `Failed to write token log: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 function getSessionSummary(
   sessionId: string,
   transcriptPath: string,
@@ -524,11 +543,26 @@ async function runQuery(
 
     if (message.type === 'result') {
       resultCount++;
-      const textResult =
-        'result' in message ? (message as { result?: string }).result : null;
+      const resultMsg = message as {
+        result?: string;
+        usage?: { input_tokens?: number; output_tokens?: number };
+      };
+      const textResult = resultMsg.result ?? null;
       log(
         `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
       );
+      if (resultMsg.usage) {
+        appendTokenLog({
+          timestamp: new Date().toISOString(),
+          sessionId: newSessionId || sessionId || 'unknown',
+          groupFolder: containerInput.groupFolder,
+          inputTokens: resultMsg.usage.input_tokens ?? 0,
+          outputTokens: resultMsg.usage.output_tokens ?? 0,
+        });
+        log(
+          `Token usage: input=${resultMsg.usage.input_tokens ?? 0} output=${resultMsg.usage.output_tokens ?? 0}`,
+        );
+      }
       writeOutput({
         status: 'success',
         result: textResult || null,
