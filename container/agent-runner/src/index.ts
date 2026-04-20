@@ -23,6 +23,7 @@ import {
   PreCompactHookInput,
 } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
+import { appendTokenLog } from './token-log.js';
 
 interface ContainerInput {
   prompt: string;
@@ -127,24 +128,6 @@ function log(message: string): void {
   console.error(`[agent-runner] ${message}`);
 }
 
-interface TokenLogEntry {
-  timestamp: string;
-  sessionId: string;
-  groupFolder: string;
-  inputTokens: number;
-  outputTokens: number;
-}
-
-function appendTokenLog(entry: TokenLogEntry): void {
-  const logPath = '/workspace/group/token-log.jsonl';
-  try {
-    fs.appendFileSync(logPath, JSON.stringify(entry) + '\n');
-  } catch (err) {
-    log(
-      `Failed to write token log: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-}
 
 function getSessionSummary(
   sessionId: string,
