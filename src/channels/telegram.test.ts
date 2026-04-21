@@ -37,6 +37,9 @@ type Handler = (...args: any[]) => any;
 
 const botRef = vi.hoisted(() => ({ current: null as any }));
 
+// Configurable flags for per-test mock behaviour
+const mockFlags = vi.hoisted(() => ({ rejectSetMyCommands: false }));
+
 vi.mock('grammy', () => ({
   Bot: class MockBot {
     token: string;
@@ -48,6 +51,11 @@ vi.mock('grammy', () => ({
       sendMessage: vi.fn().mockResolvedValue(undefined),
       sendChatAction: vi.fn().mockResolvedValue(undefined),
       getFile: vi.fn().mockResolvedValue({ file_path: 'photos/file_0.jpg' }),
+      setMyCommands: vi.fn().mockImplementation(() =>
+        mockFlags.rejectSetMyCommands
+          ? Promise.reject(new Error('Bot API unavailable'))
+          : Promise.resolve(undefined),
+      ),
     };
 
     constructor(token: string) {
@@ -195,6 +203,7 @@ const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe('TelegramChannel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFlags.rejectSetMyCommands = false;
 
     // Mock fs operations used by downloadFile
     vi.spyOn(fs, 'mkdirSync').mockReturnValue(undefined);
@@ -271,6 +280,32 @@ describe('TelegramChannel', () => {
       const channel = new TelegramChannel('test-token', opts);
 
       expect(channel.isConnected()).toBe(false);
+    });
+
+    it('registers bot command menu via setMyCommands on connect', async () => {
+      const opts = createTestOpts();
+      const channel = new TelegramChannel('test-token', opts);
+
+      await channel.connect();
+
+      expect(currentBot().api.setMyCommands).toHaveBeenCalledOnce();
+      expect(currentBot().api.setMyCommands).toHaveBeenCalledWith([
+        { command: 'compact', description: 'Compact conversation context' },
+        { command: 'ping', description: 'Check if the bot is online' },
+        { command: 'chatid', description: "Get this chat's ID" },
+      ]);
+    });
+
+    it('resolves connect() even when setMyCommands rejects', async () => {
+      const opts = createTestOpts();
+
+      // Configure the flag before connect() so the new Bot instance rejects
+      mockFlags.rejectSetMyCommands = true;
+
+      const channel = new TelegramChannel('test-token', opts);
+      // Should resolve without throwing despite setMyCommands rejecting
+      await expect(channel.connect()).resolves.toBeUndefined();
+      expect(channel.isConnected()).toBe(true);
     });
   });
 
