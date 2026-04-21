@@ -344,10 +344,23 @@ export class TelegramChannel implements Channel {
       logger.error({ err: err.message }, 'Telegram bot error');
     });
 
+    // Register the command menu shown to users when they type "/"
+    // Called before bot.start() so it is reliably awaited (onStart is not async-safe in grammy)
+    try {
+      await this.bot.api.setMyCommands([
+        { command: 'compact', description: 'Compact conversation context' },
+        { command: 'ping', description: 'Check if the bot is online' },
+        { command: 'chatid', description: "Get this chat's ID" },
+      ]);
+      logger.info('Telegram bot command menu registered');
+    } catch (err) {
+      logger.warn({ err }, 'Failed to register Telegram bot command menu');
+    }
+
     // Start polling — returns a Promise that resolves when started
     return new Promise<void>((resolve) => {
       this.bot!.start({
-        onStart: async (botInfo) => {
+        onStart: (botInfo) => {
           logger.info(
             { username: botInfo.username, id: botInfo.id },
             'Telegram bot connected',
@@ -356,19 +369,6 @@ export class TelegramChannel implements Channel {
           console.log(
             `  Send /chatid to the bot to get a chat's registration ID\n`,
           );
-
-          // Register the command menu shown to users when they type "/"
-          try {
-            await this.bot!.api.setMyCommands([
-              { command: 'compact', description: 'Compact conversation context' },
-              { command: 'ping', description: 'Check if the bot is online' },
-              { command: 'chatid', description: "Get this chat's ID" },
-            ]);
-            logger.info('Telegram bot command menu registered');
-          } catch (err) {
-            logger.warn({ err }, 'Failed to register Telegram bot command menu');
-          }
-
           resolve();
         },
       });
